@@ -1,0 +1,26 @@
+{
+  "name": "generator-html5-webapp",
+  "version": "1.0.0",
+  "description": "Yeoman generator that scaffolds out an html5 webapp using Barba.js and gulp",
+  "main": "generators/app/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abeegit/generator-html5-webapp.git"
+  },
+  "author": "Abhijeet Kumar (abhijeetkumar_1992@yahoo.in)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/abeegit/generator-html5-webapp/issues"
+  },
+  "homepage": "https://github.com/abeegit/generator-html5-webapp#readme",
+  "keywords": [
+    "yeoman-generator"
+  ],
+  "dependencies": {
+    "colors": "^1.2.3",
+    "yeoman-generator": "^2.0.5"
+  }
+}
