@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const rimraf = require("rimraf");
 const os = require("os");
+const Gulp = require("./gulp");
 
 module.exports = class HTML5WebappGenerator extends Generator {
     constructor(args, opts) {
@@ -14,6 +15,7 @@ module.exports = class HTML5WebappGenerator extends Generator {
         this.option("babel");
         this.option("jquery");
         this.option("barbajs");
+        this.option("bootstrap");
         this.option("gulp");
         this.option("sass");
 
@@ -48,6 +50,7 @@ module.exports = class HTML5WebappGenerator extends Generator {
             barbajs: this.options.barbajs,
             bootstrap: this.options.bootstrap,
             sass: this.options.sass,
+            gulp: this.options.gulp
         };
 
         if ( !this.configurations.name ) {
@@ -72,6 +75,11 @@ module.exports = class HTML5WebappGenerator extends Generator {
             integrations.push("Barba.js");
         } else {
             defaults.push("Barba.js");
+        }
+        if ( !this.configurations.integrations.gulp ) {
+            integrations.push("Gulp");
+        } else {
+            defaults.push("gulp");
         }
         if ( !this.configurations.integrations.bootstrap ) {
             integrations.push("Bootstrap");
@@ -230,6 +238,9 @@ module.exports = class HTML5WebappGenerator extends Generator {
         if ( integrations.indexOf("SASS") > -1 ) {
             configurations.sass = true;
         }
+        if ( integrations.indexOf("Gulp") > -1 ) {
+            configurations.gulp = true;
+        }
 
         return configurations;
     }
@@ -266,20 +277,20 @@ module.exports = class HTML5WebappGenerator extends Generator {
             this._setupJquery();
         }
         if ( integrations.gulp ) {
-            this._setupGulp();
+            this.composeWith(require.resolve("../gulp"), { projectName: this.configurations.name, sass: true, babel: true });
         }
-    }
-
-    _setupGulp() {
-        var rollback = () => {
-            rimraf("gulpfile.js")
-        };
     }
 
     _setupBabel() {
 
     }
 
+    /**
+     * @function
+     * @name _setupJquery
+     * @description
+     * This is a helper function that sets up jQuery and reverts its changes in case of any failures
+     */
     _setupJquery() {
         var rollback = () => {
             rimraf("scripts/jquery.js");
@@ -318,6 +329,12 @@ module.exports = class HTML5WebappGenerator extends Generator {
             });
     }
 
+    /**
+     * @function
+     * @name _setupBarbajs
+     * @description
+     * This is a helper function that sets up Barba.js and reverts its changes in case of any failures
+     */
     _setupBarbajs() {
         var rollback = () => {
             rimraf("scripts/barba.js");
@@ -356,6 +373,12 @@ module.exports = class HTML5WebappGenerator extends Generator {
             });
     }
 
+    /**
+     * @function
+     * @name _setupBootstrap
+     * @description
+     * This is a helper function that sets up Bootstrap css and js and reverts its changes in case of any failures
+     */
     _setupBootstrap() {
         var rollback = () => {
             rimraf("{styles,scripts}/{bootstrap.{scss,css},bootstrap.bundle.js}");
