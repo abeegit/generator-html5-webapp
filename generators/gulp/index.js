@@ -10,8 +10,13 @@ module.exports = class extends Generator {
     constructor(args, opts) {
         super(args, opts);
         
-        this.sass = opts.sass;
-        this.babel = opts.babel;
+        this.integrations = {
+            sass: opts.sass,
+            babel: opts.babel
+        }
+
+        this.freshInstallation = opts.fresh;
+
         this.projectName = opts.projectName;
         this.projectRoot = path.join(this.destinationRoot(), opts.projectName);
     }
@@ -32,11 +37,11 @@ module.exports = class extends Generator {
             "browser-sync",
             "gulp-concat",
         ];
-        if ( this.sass ) {
-            packages.push("gulp-sass");
+        if ( this.integrations.sass ) {
+            this.packages.push("gulp-sass");
         }
-        if ( this.babel ) {
-            packages.push("gulp-babel");
+        if ( this.integrations.babel ) {
+            this.packages.push("gulp-babel");
         }
     }
 
@@ -48,27 +53,7 @@ module.exports = class extends Generator {
      * Creates the tasks and configurations for gulp
      */
     async scaffold() {
-        var done = this.async();
-
-        var npmInit = async () => {
-            var npm = spawn(`npm`, [`init`], { cwd: this.projectRoot });
-
-            npm.stdout.on("data", data => {
-                
-            });
-
-            npm.stdin.on("data", data => {
-                this.log(data.toString());
-            })
-
-            npm.stderr.on("data", data => {
-                done(data);
-            });
-
-            npm.on("close", data => {
-                done();
-            });
-        };
+         var done = this.async();
 
         var createScaffold = async () => {
             fs.mkdir(path.join(this.projectRoot, "gulp"), err => {
@@ -85,54 +70,37 @@ module.exports = class extends Generator {
         if ( !fs.existsSync(this.projectRoot) ) {
             try {
                 await fs.mkdir(this.projectRoot);
-                // await npmInit();
                 await createScaffold();
                 done();
             } catch ( err ) {
                 done(err);
             }
         } else {
-            var answers = await this.prompt({
-                type: "confirm",
-                name: "delete",
-                message: `A folder by the name ${ this.projectName } exists. Would you like to replace its contents?`
-            });
-            if ( answers.delete ) {
-                try {
-                    // rimraf(`${ this.projectRoot }/*`, async err => {
-                        // await npmInit();
-                        await createScaffold();
-                        done();
-                    // });
-                } catch (err) {
-                    done(err);
+            if ( this.freshInstallation ) {
+                var answers = await this.prompt({
+                    type: "confirm",
+                    name: "delete",
+                    message: `A folder by the name ${ this.projectName } exists. Would you like to replace its contents?`
+                });
+                if ( answers.delete ) {
+                    try {
+                        rimraf(`${ this.projectRoot }/*`, async err => {
+                            await createScaffold();
+                            done();
+                        });
+                    } catch (err) {
+                        done(err);
+                    }
                 }
+            } else {
+                await createScaffold();
+                done();
             }
         }
     }
 
-    /**
-     * @function
-     * @name installing
-     * @description
-     * This function is of the priority type `default`
-     * Installs all npm dependencies required for gulp
-     */
-    installing() {
-        var done = this.async();
-        this.log("Installing nodejs packages at " + this.projectRoot);
-        this.npmInstall("barba.js", [], { cwd: this.projectRoot })
-            .then(response => {
-                this.log("Installed packages");
-                done();
-            })
-            .catch(err => {
-                this.log(err);
-                this.errors.push({
-                    module: "gulp",
-                    reason: err
-                });
-            });
+    install() {
+        this.npmInstall(this.packages, [], { cwd: this.projectRoot, stdio: "ignore" });
     }
 
     /**
@@ -147,7 +115,13 @@ module.exports = class extends Generator {
 
         this._writeGulpFile()
             .then(() => {
-                done();
+                this._writePackage()
+                    .then(() => {
+                        done();
+                    })
+                    .catch(err => {
+                        done(err);
+                    })
             })
             .catch(err => {
                 done(err);
@@ -180,7 +154,31 @@ module.exports = class extends Generator {
         });
     }
 
-    _writeGulpFile() {
+    _writePackage() {
+        const packageJSON = {
+            "name": this.projectName,
+            "version": "1.0.0",
+            "description": "",
+            "main": "",
+            "author": "",
+            "license": "ISC",
+            "dependencies": {
+                "gulp": "*"
+            }
+        };
+
+        return new Promise((resolve, reject) => {
+            fs.writeFile(path.join(this.projectRoot, "package.json"), JSON.stringify(packageJSON), "utf-8", err => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            })
+        });
+    }
+
+    async _writeGulpFile() {
         var content = `
             var gulp = require("gulp");
             var gulpIf = require("gulp-if");
@@ -196,11 +194,15 @@ module.exports = class extends Generator {
             });
         `;
 
-        return fs.writeFile(path.join(this.projectRoot, "gulpfile.js"), content, "utf-8", err => {
-            if (err) {
-               throw err; 
-            }
-        })
+        return new Promise(( resolve, reject ) => {
+            fs.writeFile(path.join(this.projectRoot, "gulpfile.js"), content, "utf-8", err => {
+                if (err) {
+                   reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
     }
 
     
