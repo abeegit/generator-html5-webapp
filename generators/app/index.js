@@ -119,7 +119,11 @@ module.exports = class extends Generator {
 
     install() {
         var packages = this.integrations;
-        
+        var gulpFound = packages.indexOf("gulp");
+        if ( gulpFound > -1 ) {
+            packages.splice(gulpFound, 1);
+        }
+        this.log("Installing packages");
         this.npmInstall(packages, {}, { cwd: `${ this.project.path }/temp`, stdio: "ignore" });
     }
 
@@ -202,7 +206,7 @@ module.exports = class extends Generator {
 
             return new Promise(( resolve, reject ) => {
                 if ( !fs.existsSync(slickPath) ) {
-                    reject();
+                    reject(`Error setting up slick`);
                 }
                 try {
                     fs.readFile(path.join(slickPath, "package.json"), "utf-8", (err, data) => {
@@ -237,7 +241,7 @@ module.exports = class extends Generator {
 
             return new Promise(( resolve, reject ) => {
                 if ( !fs.existsSync(modernizrPath) ) {
-                    reject();
+                    reject(`Error setting up modernizr`);
                 }
                 try {
                     fs.readFile(path.join(modernizrPath, "package.json"), "utf-8", (err, data) => {
@@ -268,7 +272,7 @@ module.exports = class extends Generator {
 
             return new Promise(( resolve, reject ) => {
                 if ( !fs.existsSync(barbajsPath) ) {
-                    reject();
+                    reject(`Error setting up barba.js`);
                 }
                 try {
                     fs.readFile(path.join(barbajsPath, "package.json"), "utf-8", (err, data) => {
@@ -295,7 +299,7 @@ module.exports = class extends Generator {
 
             return new Promise(( resolve, reject ) => {
                 if ( !fs.existsSync(jQueryPath) ) {
-                    reject();
+                    reject(`Error setting up jQuery`);
                 }
                 try {
                     fs.readFile(path.join(jQueryPath, "package.json"), "utf-8", (err, data) => {
@@ -332,7 +336,7 @@ module.exports = class extends Generator {
                 }
 
                 if ( !fs.existsSync(bootstrapPath) ) {
-                    reject();
+                    reject(`Error setting up bootstrap`);
                 }
 
                 setupJquery().then(() => {

@@ -76,7 +76,7 @@ module.exports = class extends Generator {
                 done(err);
             }
         } else {
-            if ( this.freshInstallation ) {
+            if ( !this.freshInstallation ) {
                 var answers = await this.prompt({
                     type: "confirm",
                     name: "delete",
@@ -100,7 +100,16 @@ module.exports = class extends Generator {
     }
 
     install() {
-        this.npmInstall(this.packages, [], { cwd: this.projectRoot, stdio: "ignore" });
+        process.chdir(this.projectRoot);
+
+        this.installDependencies({ npm: true, yarn: false, bower: false })
+            .then(() => {
+                process.chdir(this.destinationPath());
+            })
+            .catch(err => {
+                this.log(err);
+            })
+        
     }
 
     /**
@@ -112,7 +121,6 @@ module.exports = class extends Generator {
      */
     writing() {
         var done = this.async();
-
         this._writeGulpFile()
             .then(() => {
                 this._writePackage()
@@ -120,10 +128,13 @@ module.exports = class extends Generator {
                         done();
                     })
                     .catch(err => {
+                        this.log("ending")
                         done(err);
                     })
             })
             .catch(err => {
+                this.log("ending2")
+                this.log(err);
                 done(err);
             });
     }
@@ -135,7 +146,7 @@ module.exports = class extends Generator {
      * This is the last method to run in the Yeoman run loop
      */
     end() {
-        this.log("Done setting up gulp");
+        this.log(`Finished setting up gulp`);``
     }
 
     /**
@@ -155,6 +166,10 @@ module.exports = class extends Generator {
     }
 
     _writePackage() {
+        var dependencies = {};
+        this.packages.forEach(aPackage => {
+            dependencies[aPackage] = "*";
+        });
         const packageJSON = {
             "name": this.projectName,
             "version": "1.0.0",
@@ -162,13 +177,11 @@ module.exports = class extends Generator {
             "main": "",
             "author": "",
             "license": "ISC",
-            "dependencies": {
-                "gulp": "*"
-            }
+            "dependencies": dependencies
         };
 
         return new Promise((resolve, reject) => {
-            fs.writeFile(path.join(this.projectRoot, "package.json"), JSON.stringify(packageJSON), "utf-8", err => {
+            fs.writeFile(path.join(this.projectRoot, "package.json"), JSON.stringify(packageJSON, null, 4), "utf-8", err => {``
                 if (err) {
                     reject(err);
                 } else {
@@ -204,6 +217,4 @@ module.exports = class extends Generator {
             });
         });
     }
-
-    
 }
