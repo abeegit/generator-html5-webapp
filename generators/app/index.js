@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const rimraf = require("rimraf");
 const os = require("os");
+const { spawn } = require("child_process");
 
 module.exports = class extends Generator {
     constructor(args, opts) {
@@ -27,8 +28,26 @@ module.exports = class extends Generator {
                 this.integrations.push("bootstrap");
             }
             if ( answers.gulp ) {
-                this.integrations.push("gulp");
-                this.composeWith(require.resolve("../gulp"), { projectName: this.project.name, fresh: true });
+                if ( answers.gulp !== "no" ) {
+                    this.integrations.push("gulp");
+
+                    this.composeWith(require.resolve("../gulp"), { 
+                        projectName: this.project.name, 
+                        sass: this.integrations.gulp !== "gulp" ? false : true, 
+                        fresh: true 
+                    });
+                }
+            }
+            if ( answers.barbajs ) {
+                this.integrations.push("barba.js");
+            }
+            if ( answers.libraries && Array.isArray(answers.libraries) ) {
+                if ( answers.libraries.indexOf("modernizr") > -1 ) {
+                    this.integrations.push("modernizr");
+                }
+                if ( answers.libraries.indexOf("slick-carousel") > -1 ) {
+                    this.integrations.push("slick-carousel");
+                }
             }
             done();
         }
@@ -101,7 +120,7 @@ module.exports = class extends Generator {
     install() {
         var packages = this.integrations;
         
-        this.npmInstall(packages, { /*"prefer-online": true*/ }, { cwd: `${ this.project.path }/temp`, stdio: "ignore" });
+        this.npmInstall(packages, {}, { cwd: `${ this.project.path }/temp`, stdio: "ignore" });
     }
 
     end() {
@@ -111,16 +130,20 @@ module.exports = class extends Generator {
         }
 
         function afterInstall() {
-
+            
             return new Promise(( resolve, reject ) => {
 
                 function checkIfComplete(callback) {
                     if ( promisesToBeResolved === promisesResolved ) {
-                        callback();        
+                        rimraf(`${ path.join(this.project.path, "temp") }`, err => {
+                            callback(); 
+                        });        
                     }
                 }
 
-                var packages = ["bootstrap"],
+                checkIfComplete = checkIfComplete.bind(this);
+
+                var packages = this.integrations,
                     promisesToBeResolved = 0,
                     promisesResolved = 0;
                 
@@ -144,6 +167,126 @@ module.exports = class extends Generator {
                             .catch(handleError);
                     }
                 }
+                if ( packages.indexOf("barba.js") > -1 ) {
+                    promisesToBeResolved++;
+                    setupBarbajs()
+                        .then(() => {
+                            promisesResolved++;
+                            checkIfComplete(resolve);
+                        })
+                        .catch(handleError);
+                }
+                if ( packages.indexOf("modernizr") > -1 ) {
+                    promisesToBeResolved++;
+                    setupModernizr()
+                        .then(() => {
+                            promisesResolved++;
+                            checkIfComplete(resolve);
+                        })
+                        .catch(handleError);
+                }
+                if ( packages.indexOf("slick-carousel") > -1 ) {
+                    promisesToBeResolved++;
+                    setupSlick()
+                        .then(() => {
+                            promisesResolved++;
+                            checkIfComplete(resolve);
+                        })
+                        .catch(handleError);
+                }
+            });
+        }
+
+        function setupSlick() {
+            var slickPath = path.join(this.project.path, "temp", "node_modules", "slick-carousel");
+
+            return new Promise(( resolve, reject ) => {
+                if ( !fs.existsSync(slickPath) ) {
+                    reject();
+                }
+                try {
+                    fs.readFile(path.join(slickPath, "package.json"), "utf-8", (err, data) => {
+                        if (err) {
+                            throw err;
+                        }
+
+                        var packageJSON = JSON.parse(data);
+                        var slickScriptPath = path.join(slickPath, packageJSON.main);
+                        var slickStylePath = path.join(slickPath, "slick", "slick.css");
+
+                        fs.copyFile(slickScriptPath, path.join(this.project.path, "scripts", "slick.js"), err => {
+                            if ( err ) {
+                                throw err;
+                            }
+                            fs.copyFile(slickStylePath, path.join(this.project.path, "styles", "slick.css"), err => {
+                                if (err) {
+                                    throw err;
+                                }
+                                resolve();
+                            });
+                        });
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function setupModernizr() {
+            var modernizrPath = path.join(this.project.path, "temp", "node_modules", "modernizr");
+
+            return new Promise(( resolve, reject ) => {
+                if ( !fs.existsSync(modernizrPath) ) {
+                    reject();
+                }
+                try {
+                    fs.readFile(path.join(modernizrPath, "package.json"), "utf-8", (err, data) => {
+                        if (err) {
+                            throw err;
+                        }
+                        var packageJSON = JSON.parse(data);
+                        var modernizrBinary = path.join(modernizrPath, packageJSON.bin.modernizr);
+
+                        var modernizrBuild = spawn(modernizrBinary, ["-c", `${ modernizrPath }/lib/config-all.json`], { cwd: path.join(this.project.path, "scripts") });
+
+                        modernizrBuild.stderr.on("data", data => {
+                            reject(data.toString());
+                        });
+
+                        modernizrBuild.on("exit", code => {
+                            resolve();
+                        });
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function setupBarbajs() {
+            var barbajsPath = path.join(this.project.path, "temp", "node_modules", "barba.js");
+
+            return new Promise(( resolve, reject ) => {
+                if ( !fs.existsSync(barbajsPath) ) {
+                    reject();
+                }
+                try {
+                    fs.readFile(path.join(barbajsPath, "package.json"), "utf-8", (err, data) => {
+                        if (err) {
+                            throw err;
+                        }
+                        var packageJSON = JSON.parse(data);
+                        var barbajsFilePath = path.join(barbajsPath, packageJSON.main);
+                        fs.copyFile(barbajsFilePath, path.join(this.project.path, "scripts", "barba.js"), err => {
+                            if (err) {
+                                throw err;
+                            }
+                            resolve();
+                        });
+                    });
+                } catch (error) {
+                    reject(error);
+                }
             });
         }
 
@@ -158,17 +301,15 @@ module.exports = class extends Generator {
                     fs.readFile(path.join(jQueryPath, "package.json"), "utf-8", (err, data) => {
                         if ( err ) {
                             throw err;
-                        } else {
-                            var packageJSON = JSON.parse(data);
-                            var jQueryFilePath = path.join(jQueryPath, packageJSON.main);
-                            fs.copyFile(jQueryFilePath, path.join(this.project.path, "scripts", "jquery.js"), err => {
-                                if (err) {
-                                    throw err;
-                                } else {
-                                    resolve();
-                                }
-                            });
                         }
+                        var packageJSON = JSON.parse(data);
+                        var jQueryFilePath = path.join(jQueryPath, packageJSON.main);
+                        fs.copyFile(jQueryFilePath, path.join(this.project.path, "scripts", "jquery.js"), err => {
+                            if (err) {
+                                throw err;
+                            }
+                            resolve();
+                        });
                     })
                 } catch ( error ) {
                     rimraf(`${ this.project.path }scripts/jquery.js`);
@@ -217,10 +358,9 @@ module.exports = class extends Generator {
                                 fs.copyFile(bootstrapStylesPath, bootstrapStylesDestinationPath, err => {
                                     if (err) {
                                         throw err;
-                                    } else {
-                                        promisesCount++;
-                                        checkIfComplete();
                                     }
+                                    promisesCount++;
+                                    checkIfComplete();
                                 });
                             }
                         });
@@ -240,15 +380,22 @@ module.exports = class extends Generator {
                     /** TODO: Beautify generated HTML */
                     var scripts = [],
                         styles = [];
-                    if ( this.integrations.indexOf("barbajs") > -1 ) {
-                        scripts.push(`<script src="scripts/barba.js">`);
+                    if ( this.integrations.indexOf("barba.js") > -1 ) {
+                        scripts.push(`<script src="scripts/barba.js"></script>`);
                     }
                     if ( this.integrations.indexOf("bootstrap") > -1 ) {
                         styles.push(`<link rel="stylesheet" href="styles/bootstrap.css" />`);
-                        scripts.push(`<script src="scripts/bootstrap.bundle.js">`);
+                        scripts.push(`<script src="scripts/bootstrap.bundle.js"></script>`);
                     }
                     if ( this.integrations.indexOf("jquery") > -1 ) {
-                        scripts.push(`<script src="scripts/jquery.js">`);
+                        scripts.push(`<script src="scripts/jquery.js"></script>`);
+                    }
+                    if ( this.integrations.indexOf("modernizr") > -1 ) {
+                        scripts.push(`<script src="scripts/modernizr.js"></script>`)
+                    }
+                    if ( this.integrations.indexOf("slick-carousel") > -1 ) {
+                        styles.push(`<link rel="stylesheet" href="styles/slick.css" />`);
+                        scripts.push(`<script src="scripts/slick.js"></script>`)
                     }
                     
                     fs.readFile(path.join(__dirname, "index.html"), "utf-8", (err, data) => {
@@ -271,6 +418,9 @@ module.exports = class extends Generator {
         afterInstall = afterInstall.bind(this);
         setupBootstrap = setupBootstrap.bind(this);
         setupJquery = setupJquery.bind(this);
+        setupBarbajs = setupBarbajs.bind(this);
+        setupModernizr = setupModernizr.bind(this);
+        setupSlick = setupSlick.bind(this);
         writeEntryFile = writeEntryFile.bind(this);
 
         var done = this.async();
@@ -292,20 +442,61 @@ module.exports = class extends Generator {
             {
                 type: "input",
                 name: "name",
-                message: "Project Name".bold.white,
+                message: `${ "Project Name".bold.white }`,
                 default: "my-html5-webapp"
             },
             {
                 type: "confirm",
                 name: "bootstrap",
-                message: "Do you want to use Bootstrap?",
+                message: `Do you want to use Bootstrap?`,
                 default: false
             },
             {
-                type: "confirm",
+                type: "list",
                 name: "gulp",
-                message: "Would you like to set Gulp as your build tool?",
-                default: true
+                message: `Would you like to set Gulp as your build tool?`,
+                default: "gulp",
+                choices: [
+                    {
+                        name: `No`,
+                        value: "no",
+                        short: "No"
+                    },
+                    {
+                        name: `I want Gulp with ${ "SASS".bold }`,
+                        value: "sass",
+                        short: "Gulp with SASS"
+                    },
+                    {
+                        name: `${ "Gulp".bold } only`,
+                        value: "gulp",
+                        short: "Gulp"
+                    }
+                ]
+            },
+            {
+                type: "confirm",
+                name: "barbajs",
+                message: `Do you want to use Barba.js to create smooth and fluid page transitions?`,
+                default: false
+            },
+            {
+                type: "checkbox",
+                name: "libraries",
+                message: `Which of these libraries do you want in your project?`,
+                default: [],
+                choices: [
+                    {
+                        name: `${ "Modernizr".bold }, a feature detection library for HTML5/CSS3`,
+                        value: "modernizr",
+                        short: "Modernizr"
+                    },
+                    {
+                        name: `${ "Slick".bold }, a jQuery carousel`,
+                        value: "slick-carousel",
+                        short: "Slick"
+                    }
+                ]
             }
         ];
     }
