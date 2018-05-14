@@ -5,20 +5,25 @@ const rimraf = require("rimraf");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
+const Utility = require("./../../utils");
 
-module.exports = class extends Generator {
+module.exports = class GulpGenerator extends Generator {
     constructor(args, opts) {
         super(args, opts);
         
         this.integrations = {
             sass: opts.sass,
-            babel: opts.babel
+            babel: opts.babel,
+            jquery: opts.jquery,
+            modernizr: opts.modernizr,
+            slick: opts.slick,
+
         }
 
         this.freshInstallation = opts.fresh;
 
-        this.projectName = opts.projectName;
-        this.projectRoot = path.join(this.destinationRoot(), opts.projectName);
+        this.projectName = opts.projectName ? opts.projectName : "my-html5-webapp";
+        this.projectRoot = path.join(this.destinationRoot(), this.projectName);
     }
 
     /**
@@ -42,6 +47,22 @@ module.exports = class extends Generator {
         }
         if ( this.integrations.babel ) {
             this.packages.push("gulp-babel");
+        }
+        if ( this.integrations.bootstrap) {
+            this.packages.push("jquery");
+            this.packages.push("bootstrap");
+        }
+        if ( this.integrations.jquery && !this.integrations.bootstrap ) {
+            this.packages.push("jquery");
+        }
+        if ( this.integrations.barbajs ) {
+            this.packages.push("barba.js");
+        }
+        if ( this.integrations.slick ) {
+            this.packages.push("slick-carousel");
+        }
+        if ( this.integrations.modernizr ) {
+            this.packages.push("modernizr");
         }
     }
 
@@ -99,17 +120,32 @@ module.exports = class extends Generator {
         }
     }
 
+    /**
+     * @function
+     * @name install
+     * @description 
+     * Runs after {@link GulpGenerator.writing GulpGenerator.writing} in the Yeoman run loop
+     */
     install() {
         process.chdir(this.projectRoot);
 
         this.installDependencies({ npm: true, yarn: false, bower: false })
             .then(() => {
+                // afterInstall()
+                //     .then(writeEntryFile)
+                //     .then(
+
+                //     )
+                //     .catch(err => {
+                //         /** TODO: Handle error */
+                //     })
                 process.chdir(this.destinationPath());
             })
             .catch(err => {
                 this.log(err);
             })
-        
+
+        this.npmInstall(this.packages, {}, { cwd: path.join(this.projectRoot) });
     }
 
     /**
@@ -146,6 +182,72 @@ module.exports = class extends Generator {
      * This is the last method to run in the Yeoman run loop
      */
     end() {
+
+        function afterInstall() {
+            
+            function checkIfComplete(callback) {
+                if ( promisesToBeResolved === promisesResolved ) {
+                    rimraf(`${ path.join(this.project.path, "temp") }`, err => {
+                        callback(); 
+                    });        
+                }
+            }
+
+            checkIfComplete = checkIfComplete.bind(this);
+
+            var packages = this.integrations,
+                promisesToBeResolved = 0,
+                promisesResolved = 0;
+            
+            if ( packages.indexOf("bootstrap") > -1 ) { 
+                promisesToBeResolved++;
+                Utility.setupBootstrap(this.project.path)
+                    .then(() => { 
+                        promisesResolved++;
+                        checkIfComplete(resolve);
+                    })
+                    .catch(handleError);
+            }
+            if ( packages.indexOf("jquery") > -1 ) {
+                if ( packages.indexOf("bootstrap") === -1 ) {
+                    promisesToBeResolved++;
+                    Utility.setupJquery(this.project.path)
+                        .then(() => {
+                            promisesResolved++;
+                            checkIfComplete(resolve);
+                        })
+                        .catch(handleError);
+                }
+            }
+            if ( packages.indexOf("barba.js") > -1 ) {
+                promisesToBeResolved++;
+                Utility.setupBarbajs()
+                    .then(() => {
+                        promisesResolved++;
+                        checkIfComplete(resolve);
+                    })
+                    .catch(handleError);
+            }
+            if ( packages.indexOf("modernizr") > -1 ) {
+                promisesToBeResolved++;
+                Utility.setupModernizr()
+                    .then(() => {
+                        promisesResolved++;
+                        checkIfComplete(resolve);
+                    })
+                    .catch(handleError);
+            }
+            if ( packages.indexOf("slick-carousel") > -1 ) {
+                promisesToBeResolved++;
+                Utility.setupSlick()
+                    .then(() => {
+                        promisesResolved++;
+                        checkIfComplete(resolve);
+                    })
+                    .catch(handleError);
+            }
+            
+        }
         this.log(`Finished setting up gulp`);``
     }
 

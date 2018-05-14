@@ -5,48 +5,82 @@ const path = require("path");
 const rimraf = require("rimraf");
 const os = require("os");
 const { spawn } = require("child_process");
+const Utility = require("./../../utils");
+const Spinner = require("cli-spinner").Spinner;
 
-module.exports = class extends Generator {
+spinner = new Spinner("%s  Starting..")
+spinner.setSpinnerString("</>\\{?}");
+spinner.start();
+Utility.registerInterruptSignal(process);
+
+module.exports = class HTML5WebappGenerator extends Generator {
     constructor(args, opts) {
         super(args, opts);
 
         this.argument("name", { type: String, required: false });
 
         this.option("bootstrap");
+
+        this.spinner = spinner;
     }
 
+    /**
+     * @function
+     * @name initializing
+     * @description 
+     * Runs with highest priority in the Yeoman run loop
+     */
     initializing() {
 
         function processAnswers(answers) {
+            if ( !this.spinner.isSpinning() ) {
+                // this.spinner.setSpinnerTitle("Configuring your")
+                // this.spinner.start();
+            }
+
             this.project = {
                 name: answers.name,
                 path: `${ this.destinationRoot() }/${ answers.name }`
             };
 
-            if ( answers.bootstrap ) {
-                this.integrations.push("jquery");
-                this.integrations.push("bootstrap");
-            }
+            Utility.registerInterruptSignal(process, this.project.path);
+
+            var hasGulp = false;
             if ( answers.gulp ) {
                 if ( answers.gulp !== "no" ) {
+                    hasGulp = true;
                     this.integrations.push("gulp");
 
                     this.composeWith(require.resolve("../gulp"), { 
                         projectName: this.project.name, 
-                        sass: this.integrations.gulp !== "gulp" ? false : true, 
+                        sass: this.integrations.gulp !== "gulp" ? false : true,
+                        bootstrap: answers.bootstrap ? true : false,
+                        barbajs: answers.barbajs ? true : false,
+                        jquery: answers.jquery ? true : false,
+                        modernizr: answers.libraries && Array.isArray(answers.libraries) && answers.libraries.indexOf("modernizr") > -1 ? true : false,
+                        slick: answers.libraries && Array.isArray(answers.libraries) && answers.libraries.indexOf("slick-carousel") > -1 ? true : false, 
                         fresh: true 
                     });
                 }
             }
-            if ( answers.barbajs ) {
-                this.integrations.push("barba.js");
-            }
-            if ( answers.libraries && Array.isArray(answers.libraries) ) {
-                if ( answers.libraries.indexOf("modernizr") > -1 ) {
-                    this.integrations.push("modernizr");
+            if ( !hasGulp ) {
+                if ( answers.bootstrap ) {
+                    this.integrations.push("jquery");
+                    this.integrations.push("bootstrap");
                 }
-                if ( answers.libraries.indexOf("slick-carousel") > -1 ) {
-                    this.integrations.push("slick-carousel");
+                if ( answers.barbajs ) {
+                    this.integrations.push("barba.js");
+                }
+                if ( answers.libraries && Array.isArray(answers.libraries) ) {
+                    if ( answers.libraries.indexOf("jquery") > -1 && !answers.bootstrap ) {
+                        this.integrations.push("jquery");
+                    }
+                    if ( answers.libraries.indexOf("modernizr") > -1 ) {
+                        this.integrations.push("modernizr");
+                    }
+                    if ( answers.libraries.indexOf("slick-carousel") > -1 ) {
+                        this.integrations.push("slick-carousel");
+                    }
                 }
             }
             done();
@@ -58,6 +92,10 @@ module.exports = class extends Generator {
         }
 
         var done = this.async();
+
+        if ( this.spinner.isSpinning() ) {
+            this.spinner.stop(true);
+        }
 
         processAnswers = processAnswers.bind(this);
         handleError = handleError.bind(this);
@@ -76,6 +114,12 @@ module.exports = class extends Generator {
             .catch(handleError);
     }
 
+    /**
+     * @function
+     * @name configuring
+     * @description
+     * Runs after {@link HTML5WebappGenerator.configuring HTML5WebappGenerator.configuring}
+     */
     configuring() {
         
         function handleError(error) {
@@ -87,6 +131,8 @@ module.exports = class extends Generator {
             fs.mkdirSync(`${ this.project.path }/temp`);
             fs.mkdirSync(`${ this.project.path }/scripts`);
             fs.mkdirSync(`${ this.project.path }/styles`);
+            fs.writeFileSync(`${ this.project.path }/scripts/main.js`, "", "utf-8");
+            fs.writeFileSync(`${ this.project.path }/styles/main.${ this.integrations.indexOf("sass") > -1  ? "scss" : "css" }`, "", "utf-8");
         }
 
         function createProjectDirectory() {
@@ -117,9 +163,18 @@ module.exports = class extends Generator {
         }
     }
 
+    /**
+     * @function
+     * @name install
+     * @description
+     * Runs after {@link HTML5WebappGenerator.install HTML5WebappGenerator.install } 
+     * Installs all npm packages for the configuration chosen
+     */
     install() {
         var packages = this.integrations;
         var gulpFound = packages.indexOf("gulp");
+
+        /** Gulp will be installed by the gulp generator */
         if ( gulpFound > -1 ) {
             packages.splice(gulpFound, 1);
         }
@@ -127,6 +182,12 @@ module.exports = class extends Generator {
         this.npmInstall(packages, {}, { cwd: `${ this.project.path }/temp`, stdio: "ignore" });
     }
 
+    /**
+     * @function
+     * @name end
+     * @description
+     * Runs last in the Yeoman run loop
+     */
     end() {
         function handleError(error) {
             this.log(error);
@@ -153,7 +214,7 @@ module.exports = class extends Generator {
                 
                 if ( packages.indexOf("bootstrap") > -1 ) { 
                     promisesToBeResolved++;
-                    setupBootstrap()
+                    Utility.setupBootstrap(this.project.path)
                         .then(() => { 
                             promisesResolved++;
                             checkIfComplete(resolve);
@@ -163,7 +224,7 @@ module.exports = class extends Generator {
                 if ( packages.indexOf("jquery") > -1 ) {
                     if ( packages.indexOf("bootstrap") === -1 ) {
                         promisesToBeResolved++;
-                        setupJquery()
+                        Utility.setupJquery(this.project.path)
                             .then(() => {
                                 promisesResolved++;
                                 checkIfComplete(resolve);
@@ -173,7 +234,7 @@ module.exports = class extends Generator {
                 }
                 if ( packages.indexOf("barba.js") > -1 ) {
                     promisesToBeResolved++;
-                    setupBarbajs()
+                    Utility.setupBarbajs()
                         .then(() => {
                             promisesResolved++;
                             checkIfComplete(resolve);
@@ -182,7 +243,7 @@ module.exports = class extends Generator {
                 }
                 if ( packages.indexOf("modernizr") > -1 ) {
                     promisesToBeResolved++;
-                    setupModernizr()
+                    Utility.setupModernizr()
                         .then(() => {
                             promisesResolved++;
                             checkIfComplete(resolve);
@@ -191,189 +252,12 @@ module.exports = class extends Generator {
                 }
                 if ( packages.indexOf("slick-carousel") > -1 ) {
                     promisesToBeResolved++;
-                    setupSlick()
+                    Utility.setupSlick()
                         .then(() => {
                             promisesResolved++;
                             checkIfComplete(resolve);
                         })
                         .catch(handleError);
-                }
-            });
-        }
-
-        function setupSlick() {
-            var slickPath = path.join(this.project.path, "temp", "node_modules", "slick-carousel");
-
-            return new Promise(( resolve, reject ) => {
-                if ( !fs.existsSync(slickPath) ) {
-                    reject(`Error setting up slick`);
-                }
-                try {
-                    fs.readFile(path.join(slickPath, "package.json"), "utf-8", (err, data) => {
-                        if (err) {
-                            throw err;
-                        }
-
-                        var packageJSON = JSON.parse(data);
-                        var slickScriptPath = path.join(slickPath, packageJSON.main);
-                        var slickStylePath = path.join(slickPath, "slick", "slick.css");
-
-                        fs.copyFile(slickScriptPath, path.join(this.project.path, "scripts", "slick.js"), err => {
-                            if ( err ) {
-                                throw err;
-                            }
-                            fs.copyFile(slickStylePath, path.join(this.project.path, "styles", "slick.css"), err => {
-                                if (err) {
-                                    throw err;
-                                }
-                                resolve();
-                            });
-                        });
-                    });
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function setupModernizr() {
-            var modernizrPath = path.join(this.project.path, "temp", "node_modules", "modernizr");
-
-            return new Promise(( resolve, reject ) => {
-                if ( !fs.existsSync(modernizrPath) ) {
-                    reject(`Error setting up modernizr`);
-                }
-                try {
-                    fs.readFile(path.join(modernizrPath, "package.json"), "utf-8", (err, data) => {
-                        if (err) {
-                            throw err;
-                        }
-                        var packageJSON = JSON.parse(data);
-                        var modernizrBinary = path.join(modernizrPath, packageJSON.bin.modernizr);
-
-                        var modernizrBuild = spawn(modernizrBinary, ["-c", `${ modernizrPath }/lib/config-all.json`], { cwd: path.join(this.project.path, "scripts") });
-
-                        modernizrBuild.stderr.on("data", data => {
-                            reject(data.toString());
-                        });
-
-                        modernizrBuild.on("exit", code => {
-                            resolve();
-                        });
-                    });
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function setupBarbajs() {
-            var barbajsPath = path.join(this.project.path, "temp", "node_modules", "barba.js");
-
-            return new Promise(( resolve, reject ) => {
-                if ( !fs.existsSync(barbajsPath) ) {
-                    reject(`Error setting up barba.js`);
-                }
-                try {
-                    fs.readFile(path.join(barbajsPath, "package.json"), "utf-8", (err, data) => {
-                        if (err) {
-                            throw err;
-                        }
-                        var packageJSON = JSON.parse(data);
-                        var barbajsFilePath = path.join(barbajsPath, packageJSON.main);
-                        fs.copyFile(barbajsFilePath, path.join(this.project.path, "scripts", "barba.js"), err => {
-                            if (err) {
-                                throw err;
-                            }
-                            resolve();
-                        });
-                    });
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function setupJquery() {
-            var jQueryPath = path.join(this.project.path, "temp", "node_modules", "jquery");
-
-            return new Promise(( resolve, reject ) => {
-                if ( !fs.existsSync(jQueryPath) ) {
-                    reject(`Error setting up jQuery`);
-                }
-                try {
-                    fs.readFile(path.join(jQueryPath, "package.json"), "utf-8", (err, data) => {
-                        if ( err ) {
-                            throw err;
-                        }
-                        var packageJSON = JSON.parse(data);
-                        var jQueryFilePath = path.join(jQueryPath, packageJSON.main);
-                        fs.copyFile(jQueryFilePath, path.join(this.project.path, "scripts", "jquery.js"), err => {
-                            if (err) {
-                                throw err;
-                            }
-                            resolve();
-                        });
-                    })
-                } catch ( error ) {
-                    rimraf(`${ this.project.path }scripts/jquery.js`);
-                    reject(error);
-                }
-            });
-        }
-
-        function setupBootstrap() {
-
-            var bootstrapPath = path.join(this.project.path, "temp", "node_modules", "bootstrap");
-            var promisesCount = 0;
-
-            return new Promise(( resolve, reject ) => {
-
-                function checkIfComplete() {
-                    if ( promisesCount === 2 ) {
-                        resolve();
-                    }
-                }
-
-                if ( !fs.existsSync(bootstrapPath) ) {
-                    reject(`Error setting up bootstrap`);
-                }
-
-                setupJquery().then(() => {
-                    promisesCount++;
-                    checkIfComplete(); 
-                }).catch(handleError);
-
-                try {
-                    fs.readFile(path.join(bootstrapPath, "package.json"), "utf-8", ( err, data ) => {
-                        if ( err ) {
-                            throw err;
-                        }
-
-                        var packageJSON = JSON.parse(data);
-                        var bootstrapScriptPath = path.join(bootstrapPath, `${ packageJSON.main }.bundle.js`);
-                        var bootstrapStylesPath = path.join(bootstrapPath, `${ this.integrations.indexOf("sass") > -1 ? packageJSON.sass : packageJSON.style }`);
-                        var bootstrapStylesDestinationPath = path.join(this.project.path, "styles", this.integrations.indexOf("sass") > -1 ? "bootstrap.scss" : "bootstrap.css");
-
-                        fs.copyFile(bootstrapScriptPath, path.join(this.project.path, "scripts", "bootstrap.bundle.js"), err => {
-                            if (err) {
-                                throw err;
-                            } else {
-                                fs.copyFile(bootstrapStylesPath, bootstrapStylesDestinationPath, err => {
-                                    if (err) {
-                                        throw err;
-                                    }
-                                    promisesCount++;
-                                    checkIfComplete();
-                                });
-                            }
-                        });
-                        resolve();
-                    });
-                } catch ( error ) {
-                    rimraf(`${ this.project.path }/{styles,scripts}/{bootstrap.{scss,css},bootstrap.bundle.js}`);
-                    reject(error);
-                    /** TODO: Handle integration fail */
                 }
             });
         }
@@ -387,12 +271,12 @@ module.exports = class extends Generator {
                     if ( this.integrations.indexOf("barba.js") > -1 ) {
                         scripts.push(`<script src="scripts/barba.js"></script>`);
                     }
+                    if ( this.integrations.indexOf("jquery") > -1 ) {
+                        scripts.push(`<script src="scripts/jquery.js"></script>`);
+                    }
                     if ( this.integrations.indexOf("bootstrap") > -1 ) {
                         styles.push(`<link rel="stylesheet" href="styles/bootstrap.css" />`);
                         scripts.push(`<script src="scripts/bootstrap.bundle.js"></script>`);
-                    }
-                    if ( this.integrations.indexOf("jquery") > -1 ) {
-                        scripts.push(`<script src="scripts/jquery.js"></script>`);
                     }
                     if ( this.integrations.indexOf("modernizr") > -1 ) {
                         scripts.push(`<script src="scripts/modernizr.js"></script>`)
@@ -420,11 +304,6 @@ module.exports = class extends Generator {
 
         handleError = handleError.bind(this);
         afterInstall = afterInstall.bind(this);
-        setupBootstrap = setupBootstrap.bind(this);
-        setupJquery = setupJquery.bind(this);
-        setupBarbajs = setupBarbajs.bind(this);
-        setupModernizr = setupModernizr.bind(this);
-        setupSlick = setupSlick.bind(this);
         writeEntryFile = writeEntryFile.bind(this);
 
         var done = this.async();
@@ -467,9 +346,19 @@ module.exports = class extends Generator {
                         short: "No"
                     },
                     {
+                        name: `I want Gulp with ${ "Babel".bold }`,
+                        value: "sass",
+                        short: "Gulp with Babel"
+                    },
+                    {
                         name: `I want Gulp with ${ "SASS".bold }`,
                         value: "sass",
                         short: "Gulp with SASS"
+                    },
+                    {
+                        name: `I want Gulp with ${ "SASS".bold } and ${ "Babel".bold }`,
+                        value: "sass",
+                        short: "Gulp with SASS,Babel"
                     },
                     {
                         name: `${ "Gulp".bold } only`,
@@ -490,6 +379,11 @@ module.exports = class extends Generator {
                 message: `Which of these libraries do you want in your project?`,
                 default: [],
                 choices: [
+                    {
+                        name: `${ "jQuery".bold }`,
+                        value: "jquery",
+                        short: "jQuery"
+                    },
                     {
                         name: `${ "Modernizr".bold }, a feature detection library for HTML5/CSS3`,
                         value: "modernizr",
