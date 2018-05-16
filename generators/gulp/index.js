@@ -6,6 +6,7 @@ const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
 const Utility = require("./../../utils");
+const Config = require("./config.json");
 
 module.exports = class GulpGenerator extends Generator {
     constructor(args, opts) {
@@ -16,8 +17,7 @@ module.exports = class GulpGenerator extends Generator {
             babel: opts.babel,
             jquery: opts.jquery,
             modernizr: opts.modernizr,
-            slick: opts.slick,
-
+            slick: opts.slick
         }
 
         this.freshInstallation = opts.fresh;
@@ -37,12 +37,11 @@ module.exports = class GulpGenerator extends Generator {
             "run-sequence",
             "require-dir",
             "gulp-rename",
-            "gulp-minify",
+            "gulp-uglify",
             "gulp-if",
-            "browser-sync",
             "gulp-concat",
         ];
-        if ( this.integrations.sass ) {
+        if ( this.integrations.sass || true ) {
             this.packages.push("gulp-sass");
         }
         if ( this.integrations.babel ) {
@@ -74,24 +73,84 @@ module.exports = class GulpGenerator extends Generator {
      * Creates the tasks and configurations for gulp
      */
     async scaffold() {
-         var done = this.async();
+        var done = this.async();
 
-        var createScaffold = async () => {
-            fs.mkdir(path.join(this.projectRoot, "gulp"), err => {
-                if ( err ) {
-                    done(err);
-                } else {
-                    fs.mkdir(path.join(this.projectRoot, "gulp", "tasks"), err => {
-                        done(err);
+        var createSrcDirectory = () => {
+            return new Promise(( resolve, reject ) => {
+                var srcPath = path.join(this.projectRoot, "src");
+                fs.mkdir(srcPath, err => {
+                    if ( err ) {
+                        reject(err);
+                    }
+                    fs.mkdir(path.join(srcPath, "scripts"), err => {
+                        if ( err ) {
+                            reject(err);
+                        }
+                        fs.mkdir(path.join(srcPath, "styles"), err => {
+                            if ( err ) {
+                                reject(err);
+                            }
+                            resolve();
+                        });
                     });
-                }
+                });
             });
+        };
+
+        var createGulpDirectory = () => {
+            return new Promise(( resolve, reject ) => {
+                var gulpPath = path.join(this.projectRoot, "gulp");
+                fs.mkdir(gulpPath, err => {
+                    if ( err ) {
+                        reject(err);
+                    } else {
+                        fs.mkdir(path.join(gulpPath, "tasks"), err => {
+                            if ( err ) {
+                                reject(err);
+                            }
+                            resolve();
+                        });
+                    }
+                });
+            });
+        };
+
+        var createDistDirectory = () => {
+            return new Promise(( resolve, reject ) => {
+                var distPath = path.join(this.projectRoot, "dist");
+                fs.mkdir(distPath, err => {
+                    if ( err ) {
+                        reject(err);
+                    }
+                    fs.mkdir(path.join(distPath, "scripts"), err => {
+                        if ( err ) {
+                            reject(err);
+                        }
+                        fs.mkdir(path.join(distPath, "styles"), err => {
+                            if ( err ) {
+                                reject(err);
+                            }
+                            resolve();
+                        });
+                    });
+                });
+            });
+        };
+
+        var createDirectories = async () => {
+            try {
+                await createGulpDirectory();
+                await createSrcDirectory();
+                await createDistDirectory();
+            } catch ( err ) {
+                throw err;
+            }
         };
         
         if ( !fs.existsSync(this.projectRoot) ) {
             try {
                 await fs.mkdir(this.projectRoot);
-                await createScaffold();
+                await createDirectories();
                 done();
             } catch ( err ) {
                 done(err);
@@ -106,7 +165,7 @@ module.exports = class GulpGenerator extends Generator {
                 if ( answers.delete ) {
                     try {
                         rimraf(`${ this.projectRoot }/*`, async err => {
-                            await createScaffold();
+                            await createDirectories();
                             done();
                         });
                     } catch (err) {
@@ -114,7 +173,7 @@ module.exports = class GulpGenerator extends Generator {
                     }
                 }
             } else {
-                await createScaffold();
+                await createDirectories();
                 done();
             }
         }
@@ -264,6 +323,7 @@ module.exports = class GulpGenerator extends Generator {
             if ( err ) {
                 throw err;
             }
+            
         });
     }
 
@@ -300,6 +360,18 @@ module.exports = class GulpGenerator extends Generator {
             var runSequence = require("run-sequence");
             var rename = require("gulp-rename");
             var concat = require("gulp-concat");
+            var browserSync = require("browser-sync").create();
+            var requireDir = require("require-dir");
+            requireDir("./tasks", { recurse: true });
+
+            gulp.task("serve", ["sass"], () => {
+                browserSync.init({
+                    server: "./src"
+                });
+
+                gulp.watch("src/styles/*.scss", ["sass"]);
+                gulp.watch("src/*.html").on("change", browserSync.reload);
+            });
 
             gulp.task("default", callback => {
                 return runSequence(
